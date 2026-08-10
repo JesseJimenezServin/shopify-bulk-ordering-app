@@ -1,7 +1,7 @@
 client_id = "5224ae23e313c34baef32eddca3a33dc"
 name = "nuvus-drops"
 embedded = true
-application_url = "https://localhost"
+application_url = "https://nuvus-4m7mud4qb-nuvus.vercel.app"
 
 [access_scopes]
 scopes = "write_products,read_orders,write_orders"

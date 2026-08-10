@@ -1,18 +1,17 @@
-# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
-
 client_id = "8630f00b0a77d8d5dff7f61abadc88fb"
 name = "Nuvus Group Drop"
-application_url = "https://example.com"
 embedded = true
+application_url = "https://nuvus-4m7mud4qb-nuvus.vercel.app"
+
+[auth]
+redirect_urls = [
+  "https://nuvus-4m7mud4qb-nuvus.vercel.app/auth/callback"
+]
 
 [webhooks]
 api_version = "2026-07"
 
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = ""
 optional_scopes = [ ]
 use_legacy_install_flow = false
-
-[auth]
-redirect_urls = [ ]
