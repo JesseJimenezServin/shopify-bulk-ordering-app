@@ -1,0 +1,34 @@
+# Local Environment Variables
+.env
+.env.local
+.env.production
+.env.*
+
+# Dependencies & Build Output
+node_modules/
+.shopify/
+.shopify.lock
+build/
+dist/
+/.cache
+/build
+/app/build
+/public/build/
+/public/_dev
+/app/public/build
+
+# Database
+/prisma/dev.sqlite
+/prisma/dev.sqlite-journal
+database.sqlite
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Extensions
+/extensions/*/dist
+
+# OS
+.DS_Store

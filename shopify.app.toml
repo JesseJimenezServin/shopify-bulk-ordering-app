@@ -1,0 +1,23 @@
+client_id = "5224ae23e313c34baef32eddca3a33dc"
+name = "nuvus-drops"
+embedded = true
+application_url = "https://localhost"
+
+[access_scopes]
+scopes = "write_products,read_orders,write_orders"
+
+[auth]
+redirect_urls = [
+  "https://localhost/auth/callback"
+]
+
+[webhooks]
+api_version = "2024-10"
+
+[[webhooks.subscriptions]]
+uri = "/webhooks/app/uninstalled"
+topics = [ "app/uninstalled" ]
+
+[[webhooks.subscriptions]]
+topics = [ "app/scopes_update" ]
+uri = "/webhooks/app/scopes_update"
