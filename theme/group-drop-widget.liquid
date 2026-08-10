@@ -1,0 +1,309 @@
+{% comment %}
+  ============================================================
+  NUVUS — Group Drop Widget
+  ------------------------------------------------------------
+  Copy this section into your Shopify theme (product template).
+
+  REQUIRED PRODUCT METAFIELDS (namespace: group_drop):
+    - target_goal   (Integer)
+    - drop_price    (Decimal)
+    - deadline      (Date & time, ISO8601)
+    - drop_id       (Single line text)
+    - is_active     (Boolean)
+
+  Visibility: widget renders only when is_active is true AND the
+  current time is within 48 hours (172800s) after the deadline.
+  Soft-deleted drops hide immediately; metafields are purged later
+  by the app's cleanup job.
+  ============================================================
+{% endcomment %}
+
+{% assign is_active = product.metafields.group_drop.is_active.value %}
+{% assign pool_goal = product.metafields.group_drop.target_goal.value | default: 20 %}
+{% assign deadline_iso = product.metafields.group_drop.deadline.value %}
+{% assign wholesale_price = product.metafields.group_drop.drop_price.value %}
+{% assign retail_price = product.price %}
+
+{% assign show_widget = false %}
+{% if is_active == true and deadline_iso != blank %}
+  {% assign deadline_ts = deadline_iso | date: '%s' | plus: 0 %}
+  {% assign grace_end_ts = deadline_ts | plus: 172800 %}
+  {% assign now_ts = 'now' | date: '%s' | plus: 0 %}
+  {% if now_ts <= grace_end_ts %}
+    {% assign show_widget = true %}
+  {% endif %}
+{% endif %}
+
+{% if show_widget %}
+<div
+  class="nuvus-drop"
+  data-product-id="{{ product.id }}"
+  data-variant-id="{{ product.selected_or_first_available_variant.id }}"
+  data-pool-goal="{{ pool_goal }}"
+  data-deadline="{{ deadline_iso }}"
+  data-wholesale-price="{{ wholesale_price | money_without_currency }}"
+>
+  <div class="nuvus-drop__header">
+    <span class="nuvus-drop__badge">🔥 GROUP DROP LIVE</span>
+    <span class="nuvus-drop__timer" data-nuvus-timer>--:--</span>
+  </div>
+
+  <div class="nuvus-drop__bar-track">
+    <div class="nuvus-drop__bar-fill" data-nuvus-fill style="width:0%;"></div>
+  </div>
+
+  <div class="nuvus-drop__count-row">
+    <span data-nuvus-count>0</span> / <span data-nuvus-goal>{{ pool_goal }}</span> joined
+    <span class="nuvus-drop__status" data-nuvus-status></span>
+  </div>
+
+  <div class="nuvus-drop__ticker" data-nuvus-ticker aria-live="polite"></div>
+
+  <div class="nuvus-drop__price-row">
+    <span class="nuvus-drop__price-wholesale">{{ wholesale_price | money }}</span>
+    <span class="nuvus-drop__price-retail">{{ retail_price | money }}</span>
+    <span class="nuvus-drop__price-note">if goal is missed, you're not charged</span>
+  </div>
+
+  <button type="button" class="nuvus-drop__reserve-btn" data-nuvus-reserve>
+    RESERVE SPOT ({{ wholesale_price | money }})
+  </button>
+
+  <p class="nuvus-drop__disclaimer">
+    Your card is authorized, not charged, when you reserve. You're only
+    charged if the pool hits its goal before the timer runs out.
+  </p>
+</div>
+
+<script>
+(function () {
+  var widgets = document.querySelectorAll('.nuvus-drop');
+
+  var NUVUS_API_BASE = 'https://api.nuvus.com';
+  var POLL_INTERVAL_MS = 4000;
+
+  widgets.forEach(function (widget) {
+    var productId = widget.dataset.productId;
+    var variantId = widget.dataset.variantId;
+    var goal = parseInt(widget.dataset.poolGoal, 10) || 20;
+    var deadlineIso = widget.dataset.deadline;
+    var deadlineMs = deadlineIso ? new Date(deadlineIso).getTime() : null;
+
+    var fillEl = widget.querySelector('[data-nuvus-fill]');
+    var countEl = widget.querySelector('[data-nuvus-count]');
+    var timerEl = widget.querySelector('[data-nuvus-timer]');
+    var statusEl = widget.querySelector('[data-nuvus-status]');
+    var tickerEl = widget.querySelector('[data-nuvus-ticker]');
+    var reserveBtn = widget.querySelector('[data-nuvus-reserve]');
+
+    var poolLocked = false;
+
+    function formatCountdown(msRemaining) {
+      if (msRemaining <= 0) return '0:00';
+      var totalSec = Math.floor(msRemaining / 1000);
+      var m = Math.floor(totalSec / 60);
+      var s = totalSec % 60;
+      return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    function lockPool(reason) {
+      if (poolLocked) return;
+      poolLocked = true;
+      reserveBtn.disabled = true;
+      reserveBtn.textContent = reason === 'goal_reached'
+        ? '✅ GOAL REACHED — LOCKING IN'
+        : '⏱ POOL CLOSED';
+      statusEl.textContent = reason === 'goal_reached'
+        ? 'Unlocked! Processing orders...'
+        : 'Missed — no one was charged';
+    }
+
+    function tickCountdown() {
+      if (!deadlineMs) return;
+      var remaining = deadlineMs - Date.now();
+      timerEl.textContent = formatCountdown(remaining);
+      if (remaining <= 0) {
+        lockPool('deadline_passed');
+      }
+    }
+
+    function renderTicker(recent) {
+      if (!recent || !recent.length) return;
+      var entry = recent[recent.length - 1];
+      tickerEl.textContent = entry.label;
+      tickerEl.classList.remove('nuvus-drop__ticker--pulse');
+      requestAnimationFrame(function () {
+        tickerEl.classList.add('nuvus-drop__ticker--pulse');
+      });
+    }
+
+    function pollStatus() {
+      fetch(NUVUS_API_BASE + '/api/pool-status?productId=' + encodeURIComponent(productId) + '&variantId=' + encodeURIComponent(variantId))
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          var current = data.current || 0;
+          var pct = Math.min(100, Math.round((current / goal) * 100));
+          fillEl.style.width = pct + '%';
+          countEl.textContent = current;
+          renderTicker(data.recent);
+
+          if (data.status === 'reached') lockPool('goal_reached');
+          if (data.status === 'missed') lockPool('deadline_passed');
+        })
+        .catch(function (err) {
+          console.warn('NUVUS pool-status fetch failed', err);
+        });
+    }
+
+    reserveBtn.addEventListener('click', function () {
+      if (poolLocked) return;
+      reserveBtn.disabled = true;
+      reserveBtn.textContent = 'Reserving...';
+
+      fetch('/cart/add.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ id: variantId, quantity: 1 }] })
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error('cart/add failed');
+          window.location.href = '/checkout';
+        })
+        .catch(function (err) {
+          console.error(err);
+          reserveBtn.disabled = false;
+          reserveBtn.textContent = 'RESERVE SPOT — try again';
+        });
+    });
+
+    pollStatus();
+    setInterval(pollStatus, POLL_INTERVAL_MS);
+    setInterval(tickCountdown, 1000);
+    tickCountdown();
+  });
+})();
+</script>
+
+<style>
+.nuvus-drop {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+  font-family: inherit;
+  background: #fafafa;
+}
+.nuvus-drop__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.nuvus-drop__badge {
+  background: #ff3b30;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.03em;
+}
+.nuvus-drop__timer {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.nuvus-drop__bar-track {
+  background: #e5e5e5;
+  border-radius: 999px;
+  height: 14px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.nuvus-drop__bar-fill {
+  background: linear-gradient(90deg, #34c759, #30d158);
+  height: 100%;
+  transition: width 0.4s ease;
+}
+.nuvus-drop__count-row {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.nuvus-drop__status {
+  color: #ff3b30;
+  font-weight: 700;
+}
+.nuvus-drop__ticker {
+  font-size: 13px;
+  color: #666;
+  min-height: 18px;
+  margin-bottom: 10px;
+}
+.nuvus-drop__ticker--pulse {
+  animation: nuvusFade 0.5s ease;
+}
+@keyframes nuvusFade {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.nuvus-drop__price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.nuvus-drop__price-wholesale {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1a7f37;
+}
+.nuvus-drop__price-retail {
+  font-size: 15px;
+  color: #999;
+  text-decoration: line-through;
+}
+.nuvus-drop__price-note {
+  font-size: 12px;
+  color: #888;
+  margin-left: auto;
+}
+.nuvus-drop__reserve-btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: #111;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nuvus-drop__reserve-btn:disabled {
+  background: #999;
+  cursor: not-allowed;
+}
+.nuvus-drop__disclaimer {
+  font-size: 11px;
+  color: #999;
+  margin-top: 8px;
+  margin-bottom: 0;
+  text-align: center;
+}
+</style>
+{% endif %}
+
+{% schema %}
+{
+  "name": "NUVUS Group Drop",
+  "settings": [],
+  "presets": [
+    {
+      "name": "NUVUS Group Drop"
+    }
+  ]
+}
+{% endschema %}
