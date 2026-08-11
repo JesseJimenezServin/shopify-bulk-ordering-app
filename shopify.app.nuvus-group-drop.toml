@@ -1,17 +1,31 @@
 client_id = "8630f00b0a77d8d5dff7f61abadc88fb"
 name = "Nuvus Group Drop"
 embedded = true
-application_url = "https://nuvus-4m7mud4qb-nuvus.vercel.app"
+application_url = "https://nuvus-kohl.vercel.app"
 
 [auth]
 redirect_urls = [
-  "https://nuvus-4m7mud4qb-nuvus.vercel.app/auth/callback"
+  "https://nuvus-kohl.vercel.app/api/auth/callback",
+  "https://nuvus-kohl.vercel.app/auth/callback",
+  "https://nuvus-kohl.vercel.app/auth/shopify/callback"
 ]
 
 [webhooks]
 api_version = "2026-07"
 
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = ["app/uninstalled"]
+
+  [[webhooks.subscriptions]]
+  topics = ["app/scopes_update"]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = ["orders/create"]
+  uri = "/api/webhooks/order-create"
+
 [access_scopes]
-scopes = ""
+scopes = "write_products,read_orders,write_orders"
 optional_scopes = [ ]
 use_legacy_install_flow = false
