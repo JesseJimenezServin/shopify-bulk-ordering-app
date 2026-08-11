@@ -4,7 +4,9 @@ import { getStaleCleanupEntries, removeCleanupEntry } from "../lib/redis.server"
 import { deleteDropMetafields } from "../lib/metafields.server";
 
 function authorizeCleanup(request) {
-  const secret = process.env.CLEANUP_CRON_SECRET;
+  // Vercel Cron automatically sends `Authorization: Bearer $CRON_SECRET` when an
+  // env var named CRON_SECRET is set, so we accept that alongside our own name.
+  const secret = process.env.CLEANUP_CRON_SECRET || process.env.CRON_SECRET;
   if (!secret) {
     throw new Response("CLEANUP_CRON_SECRET is not configured", { status: 500 });
   }

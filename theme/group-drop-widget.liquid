@@ -79,7 +79,9 @@
 (function () {
   var widgets = document.querySelectorAll('.nuvus-drop');
 
-  var NUVUS_API_BASE = 'https://api.nuvus.com';
+  // Must match the `application_url` in shopify.app.toml — a relative path won't
+  // work here since this script runs on the storefront domain, not the app's.
+  var NUVUS_API_BASE = 'https://nuvus-kohl.vercel.app';
   var POLL_INTERVAL_MS = 4000;
 
   widgets.forEach(function (widget) {

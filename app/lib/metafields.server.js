@@ -22,6 +22,7 @@ export const GROUP_DROP_KEYS = [
   "deadline",
   "drop_id",
   "is_active",
+  "status",
 ];
 
 export async function setDropMetafields(admin, { productId, goal, price, deadlineIso, dropId, isActive }) {
@@ -45,6 +46,19 @@ export async function setDropMetafields(admin, { productId, goal, price, deadlin
 export async function deactivateDropMetafields(admin, productId) {
   const metafields = [
     { ownerId: productId, namespace: "group_drop", key: "is_active", type: "boolean", value: "false" },
+  ];
+  const response = await admin.graphql(SET_METAFIELDS_MUTATION, { variables: { metafields } });
+  const { data } = await response.json();
+
+  const errors = data?.metafieldsSet?.userErrors ?? [];
+  if (errors.length) throw new Error(`Metafield errors: ${JSON.stringify(errors)}`);
+
+  return data.metafieldsSet.metafields;
+}
+
+export async function setDropStatusMetafield(admin, productId, status) {
+  const metafields = [
+    { ownerId: productId, namespace: "group_drop", key: "status", type: "single_line_text_field", value: status },
   ];
   const response = await admin.graphql(SET_METAFIELDS_MUTATION, { variables: { metafields } });
   const { data } = await response.json();
