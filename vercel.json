@@ -1,11 +1,5 @@
 {
   "buildCommand": "npx prisma generate && npm run build",
   "devCommand": "npm run dev",
-  "installCommand": "npm install --legacy-peer-deps",
-  "crons": [
-    {
-      "path": "/api/cleanup-drops",
-      "schedule": "0 * * * *"
-    }
-  ]
+  "installCommand": "npm install --legacy-peer-deps"
 }
