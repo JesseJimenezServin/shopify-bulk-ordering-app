@@ -152,6 +152,18 @@ export default defineConfig({
 });
 ```
 
+### Cron scheduling
+
+Vercel's native Cron Jobs feature is **not used** in this project — the Hobby tier limits cron jobs to once per day, which isn't frequent enough for time-sensitive drop resolution. Instead, cron scheduling is handled externally via [cron-job.org](https://cron-job.org), configured to send a `GET` request to `/api/cleanup-drops` every minute.
+
+Since Vercel isn't invoking this endpoint, it won't auto-inject the `CRON_SECRET` bearer token the way it does for native Cron Jobs. When setting up the job in cron-job.org, add a custom request header:
+
+```
+Authorization: Bearer <value of CLEANUP_CRON_SECRET>
+```
+
+`CLEANUP_CRON_SECRET` must be set in your Vercel project's environment variables and match the value configured in cron-job.org.
+
 ## Troubleshooting
 
 ### Database tables don't exist
