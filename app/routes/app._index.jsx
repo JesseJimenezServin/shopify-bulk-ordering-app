@@ -2,19 +2,13 @@ import { json } from "@remix-run/node";
 import { useLoaderData, useSubmit } from "@remix-run/react";
 import { IndexTable, Page, Badge, Button, Text } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { redis, softDeleteDrop } from "../lib/redis.server";
+import { redis, scanDropStatusKeys, softDeleteDrop } from "../lib/redis.server";
 import { deactivateDropMetafields } from "../lib/metafields.server";
 
 export async function loader({ request }) {
   await authenticate.admin(request);
 
-  let cursor = "0";
-  const statusKeys = [];
-  do {
-    const [next, batch] = await redis.scan(cursor, { match: "nuvus:drop:*:status", count: 100 });
-    cursor = next;
-    statusKeys.push(...batch);
-  } while (cursor !== "0");
+  const statusKeys = await scanDropStatusKeys();
 
   const drops = await Promise.all(statusKeys.map(async (statusKey) => {
     const prefix = statusKey.replace(/:status$/, "");
