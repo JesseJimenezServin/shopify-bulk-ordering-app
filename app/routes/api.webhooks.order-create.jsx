@@ -15,8 +15,12 @@ export async function action({ request }) {
     if (!productId || !variantId) continue;
 
     const prefix = keyPrefix(productId, variantId);
-    const status = await redis.get(`${prefix}:status`);
+    const [status, deadline] = await Promise.all([
+      redis.get(`${prefix}:status`),
+      redis.get(`${prefix}:deadline`),
+    ]);
     if (status !== "open") continue;
+    if (deadline && Date.now() > new Date(deadline).getTime()) continue;
 
     const goal = Number(await redis.get(`${prefix}:goal`));
     const quantity = Number(item?.quantity) || 1;

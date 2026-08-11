@@ -1,7 +1,7 @@
 import { json } from "@remix-run/node";
 import { unauthenticated } from "../shopify.server";
-import { getStaleCleanupEntries, removeCleanupEntry } from "../lib/redis.server";
-import { deleteDropMetafields } from "../lib/metafields.server";
+import { getStaleCleanupEntries, removeCleanupEntry, resolveExpiredDrops } from "../lib/redis.server";
+import { deleteDropMetafields, setDropStatusMetafield } from "../lib/metafields.server";
 
 function authorizeCleanup(request) {
   // Vercel Cron automatically sends `Authorization: Bearer $CRON_SECRET` when an
@@ -17,7 +17,40 @@ function authorizeCleanup(request) {
   }
 }
 
-async function runCleanup() {
+// Drops whose deadline has passed without hitting their goal never get an
+// order webhook to flip them, so this scan is what actually resolves them
+// to "missed" and starts their 48h grace period.
+async function resolveMissed() {
+  const expired = await resolveExpiredDrops();
+  const results = [];
+
+  for (const { prefix, shop, productGid } of expired) {
+    if (!shop) {
+      results.push({ prefix, productGid, status: "missed", metafieldUpdated: false });
+      continue;
+    }
+
+    try {
+      const { admin } = await unauthenticated.admin(shop);
+      await setDropStatusMetafield(admin, productGid, "missed");
+      results.push({ prefix, productGid, status: "missed", metafieldUpdated: true });
+    } catch (error) {
+      results.push({
+        prefix,
+        productGid,
+        status: "missed",
+        metafieldUpdated: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return results;
+}
+
+// Purges metafields for drops (soft-deleted or auto-resolved as missed) whose
+// 48h grace period has fully elapsed.
+async function purgeStale() {
   const members = await getStaleCleanupEntries();
   const results = [];
 
@@ -38,7 +71,19 @@ async function runCleanup() {
     }
   }
 
-  return { processed: results.length, results };
+  return results;
+}
+
+async function runCleanup() {
+  const missed = await resolveMissed();
+  const purged = await purgeStale();
+
+  return {
+    missedResolved: missed.length,
+    missed,
+    processed: purged.length,
+    results: purged,
+  };
 }
 
 export async function loader({ request }) {

@@ -29,7 +29,7 @@ function validateDropInputs({ goal, price, durationHours }) {
 }
 
 export async function action({ request }) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
 
   const productId = formData.get("productId");
@@ -59,7 +59,7 @@ export async function action({ request }) {
 
   const prefix = keyPrefix(numericProductId, numericVariantId);
   await redis.hset(`${prefix}:config`, {
-    dropId, goal: goalNum, price: priceNum, deadline: deadlineIso, createdAt: Date.now(),
+    dropId, goal: goalNum, price: priceNum, deadline: deadlineIso, createdAt: Date.now(), shop: session.shop,
   });
   await redis.mset({
     [`${prefix}:goal`]: goalNum,
