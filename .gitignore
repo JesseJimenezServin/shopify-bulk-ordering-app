@@ -16,6 +16,7 @@ dist/
 /public/build/
 /public/_dev
 /app/public/build
+.vercel/
 
 # Database
 /prisma/dev.sqlite

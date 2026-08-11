@@ -1,4 +1,4 @@
-import { redirect } from "@remix-run/node";
+import { redirect } from "@vercel/remix";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }) => {

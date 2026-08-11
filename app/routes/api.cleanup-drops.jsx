@@ -1,4 +1,4 @@
-import { json } from "@remix-run/node";
+import { json } from "@vercel/remix";
 import { unauthenticated } from "../shopify.server";
 import { getStaleCleanupEntries, removeCleanupEntry, resolveExpiredDrops } from "../lib/redis.server";
 import { deleteDropMetafields, setDropStatusMetafield } from "../lib/metafields.server";

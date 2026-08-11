@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useSubmit, useNavigation, useActionData } from "@remix-run/react";
-import { json } from "@remix-run/node";
+import { json } from "@vercel/remix";
 import {
   Page, Card, FormLayout, TextField, Button, Thumbnail, BlockStack, Text, Banner,
 } from "@shopify/polaris";

@@ -1,4 +1,4 @@
-import { json } from "@remix-run/node";
+import { json } from "@vercel/remix";
 import { useLoaderData, useSubmit } from "@remix-run/react";
 import { IndexTable, Page, Badge, Button, Text } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
