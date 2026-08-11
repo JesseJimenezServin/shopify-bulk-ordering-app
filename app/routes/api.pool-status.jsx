@@ -1,4 +1,4 @@
-import { json } from "@remix-run/node";
+import { json } from "@vercel/remix";
 import { redis, keyPrefix } from "../lib/redis.server";
 
 // Called from the storefront widget (theme/group-drop-widget.liquid), which runs

@@ -1,4 +1,4 @@
-import type { HeadersFunction, LoaderFunctionArgs } from "@remix-run/node";
+import type { HeadersFunction, LoaderFunctionArgs } from "@vercel/remix";
 import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";

@@ -130,33 +130,29 @@ When you reach the step for [setting up environment variables](https://shopify.d
 
 ### Hosting on Vercel
 
-Using the Vercel Preset is recommended when hosting your Shopify Remix app on Vercel. You'll also want to ensure imports that would normally come from `@remix-run/node` are imported from `@vercel/remix` instead. Learn more about hosting Remix apps on Vercel [here](https://vercel.com/docs/frameworks/remix).
+This app is deployed on Vercel and already uses the Vercel Preset, which is required for a Remix app hosted there — without it, dynamic routes (including the embedded app's own entry point) return a platform-level `404: NOT_FOUND` instead of reaching the Remix server. Learn more about hosting Remix apps on Vercel [here](https://vercel.com/docs/frameworks/remix).
 
-```diff
-// vite.config.ts
-import { vitePlugin as remix } from "@remix-run/dev";
-import { defineConfig, type UserConfig } from "vite";
-import tsconfigPaths from "vite-tsconfig-paths";
-+ import { vercelPreset } from '@vercel/remix/vite';
+Concretely, this means:
 
-installGlobals();
+- `vite.config.ts` registers `presets: [vercelPreset()]` (imported from `@vercel/remix/vite`) in the Remix Vite plugin.
+- `app/entry.server.tsx` renders through `handleRequest` from `@vercel/remix` instead of a hand-rolled Node stream pipeline.
+- Every route that previously imported types or helpers (`json`, `redirect`, `LoaderFunctionArgs`, etc.) from `@remix-run/node` now imports them from `@vercel/remix` instead, which is a drop-in superset of the `@remix-run/node` API tailored for Vercel's runtime.
 
-export default defineConfig({
-  plugins: [
-    remix({
-      ignoredRouteFiles: ["**/.*"],
-+     presets: [vercelPreset()],
-    }),
-    tsconfigPaths(),
-  ],
-});
-```
+If you fork this app onto a different host (Heroku, Fly.io, Docker), swap those `@vercel/remix` imports back to `@remix-run/node` and remove the preset — `@vercel/remix` is Vercel-specific.
 
-### Cron scheduling
+### Background jobs and drop resolution
 
-Vercel's native Cron Jobs feature is **not used** in this project — the Hobby tier limits cron jobs to once per day, which isn't frequent enough for time-sensitive drop resolution. Instead, cron scheduling is handled externally via [cron-job.org](https://cron-job.org), configured to send a `GET` request to `/api/cleanup-drops` every minute.
+Group drops resolve in two different ways, on two different triggers:
 
-Since Vercel isn't invoking this endpoint, it won't auto-inject the `CRON_SECRET` bearer token the way it does for native Cron Jobs. When setting up the job in cron-job.org, add a custom request header:
+- **Reached, instantly.** `app/routes/api.webhooks.order-create.jsx` handles the `orders/create` webhook. The moment an order for a product with an open drop is processed, it increments the pool count in Redis and, if that pushes the count to the goal, immediately flips the drop's status to `reached` and updates its metafields — synchronously, in the same webhook request. There is no polling or batching involved in this transition.
+- **Missed and cleanup, on a schedule.** Two things can't be triggered by an order webhook, since there's no order to react to: a drop whose deadline passes without reaching its goal, and the eventual removal of a resolved drop's metafields 48 hours after it closes (so the storefront widget has time to show its final state). Both are handled by `app/routes/api.cleanup-drops.jsx`.
+
+Vercel's native Cron Jobs feature is **not used** for this — the Hobby plan limits native crons to once per day, far too infrequent for marking a drop "missed" close to its actual deadline. Instead, `vercel.json` has no `crons` block, and scheduling is handled externally via [cron-job.org](https://cron-job.org), configured to send a `GET` request to `/api/cleanup-drops` every minute. On each invocation it:
+
+1. Scans for open drops whose deadline has passed without hitting their goal, marks them `missed`, and queues them for cleanup.
+2. Purges Shopify metafields for any drop (`reached`, `missed`, or manually ended) whose 48-hour grace period has fully elapsed.
+
+Since Vercel isn't invoking this endpoint itself, it won't auto-inject the `CRON_SECRET` bearer token the way it does for native Cron Jobs. When setting up the job in cron-job.org, add a custom request header:
 
 ```
 Authorization: Bearer <value of CLEANUP_CRON_SECRET>
