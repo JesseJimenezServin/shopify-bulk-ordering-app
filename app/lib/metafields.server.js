@@ -32,6 +32,7 @@ export async function setDropMetafields(admin, { productId, goal, price, deadlin
     { ownerId: productId, namespace: "group_drop", key: "deadline", type: "date_time", value: deadlineIso },
     { ownerId: productId, namespace: "group_drop", key: "drop_id", type: "single_line_text_field", value: dropId },
     { ownerId: productId, namespace: "group_drop", key: "is_active", type: "boolean", value: String(isActive) },
+    { ownerId: productId, namespace: "group_drop", key: "status", type: "single_line_text_field", value: "active" },
   ];
 
   const response = await admin.graphql(SET_METAFIELDS_MUTATION, { variables: { metafields } });
