@@ -1,0 +1,97 @@
+{% comment %}
+  ============================================================
+  NUVUS — Group Drop Progress (App Block)
+  ------------------------------------------------------------
+  Add from the Theme Editor: on a product template, "Add block"
+  on the main product section, then choose "Group Drop Progress"
+  under Apps.
+
+  REQUIRED PRODUCT METAFIELDS (namespace: group_drop):
+    - target_goal   (Integer)
+    - drop_price    (Decimal)
+    - deadline      (Date & time, ISO8601)
+    - drop_id       (Single line text)
+    - is_active     (Boolean)
+
+  Visibility: renders only when is_active is true AND the current
+  time is within 48 hours (172800s) after the deadline. Soft-deleted
+  drops hide immediately; metafields are purged later by the app's
+  cleanup job.
+  ============================================================
+{% endcomment %}
+
+{{ 'group-drop-widget.css' | asset_url | stylesheet_tag }}
+
+{% assign drop_product = block.settings.product %}
+
+{% assign show_widget = false %}
+{% if drop_product %}
+  {% assign is_active = drop_product.metafields.group_drop.is_active.value %}
+  {% assign pool_goal = drop_product.metafields.group_drop.target_goal.value | default: 20 %}
+  {% assign deadline_iso = drop_product.metafields.group_drop.deadline.value %}
+  {% assign wholesale_price = drop_product.metafields.group_drop.drop_price.value %}
+  {% assign retail_price = drop_product.price %}
+
+  {% if is_active == true and deadline_iso != blank %}
+    {% assign deadline_ts = deadline_iso | date: '%s' | plus: 0 %}
+    {% assign grace_end_ts = deadline_ts | plus: 172800 %}
+    {% assign now_ts = 'now' | date: '%s' | plus: 0 %}
+    {% if now_ts <= grace_end_ts %}
+      {% assign show_widget = true %}
+    {% endif %}
+  {% endif %}
+{% endif %}
+
+{% if show_widget %}
+<div
+  class="nuvus-drop"
+  data-product-id="{{ drop_product.id }}"
+  data-variant-id="{{ drop_product.selected_or_first_available_variant.id }}"
+  data-pool-goal="{{ pool_goal }}"
+  data-deadline="{{ deadline_iso }}"
+  data-wholesale-price="{{ wholesale_price | money_without_currency }}"
+>
+  <div class="nuvus-drop__header">
+    <span class="nuvus-drop__badge">{{ 'group_drop.badge' | t }}</span>
+    <span class="nuvus-drop__timer" data-nuvus-timer>--:--</span>
+  </div>
+
+  <div class="nuvus-drop__bar-track">
+    <div class="nuvus-drop__bar-fill" data-nuvus-fill style="width:0%;"></div>
+  </div>
+
+  <div class="nuvus-drop__count-row">
+    <span data-nuvus-count>0</span> / <span data-nuvus-goal>{{ pool_goal }}</span> {{ 'group_drop.joined' | t }}
+    <span class="nuvus-drop__status" data-nuvus-status></span>
+  </div>
+
+  <div class="nuvus-drop__ticker" data-nuvus-ticker aria-live="polite"></div>
+
+  <div class="nuvus-drop__price-row">
+    <span class="nuvus-drop__price-wholesale">{{ wholesale_price | money }}</span>
+    <span class="nuvus-drop__price-retail">{{ retail_price | money }}</span>
+    <span class="nuvus-drop__price-note">{{ 'group_drop.price_note' | t }}</span>
+  </div>
+
+  <button type="button" class="nuvus-drop__reserve-btn" data-nuvus-reserve>
+    {{ 'group_drop.reserve' | t }} ({{ wholesale_price | money }})
+  </button>
+
+  <p class="nuvus-drop__disclaimer">{{ 'group_drop.disclaimer' | t }}</p>
+</div>
+
+<script src="{{ 'group-drop-widget.js' | asset_url }}" defer="defer"></script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Group Drop Progress",
+  "target": "section",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "settings": [
+    { "type": "product", "id": "product", "label": "Product", "autofill": true }
+  ]
+}
+{% endschema %}
