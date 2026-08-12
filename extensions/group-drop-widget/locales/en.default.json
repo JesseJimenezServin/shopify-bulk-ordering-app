@@ -4,6 +4,10 @@
     "joined": "joined",
     "price_note": "if goal is missed, you're not charged",
     "reserve": "RESERVE SPOT",
-    "disclaimer": "Your card is authorized, not charged, when you reserve. You're only charged if the pool hits its goal before the timer runs out."
+    "disclaimer": "Your card is authorized, not charged, when you reserve. You're only charged if the pool hits its goal before the timer runs out.",
+    "dormant_badge": "⏳ COMING SOON",
+    "dormant_copy": "This group drop hasn't launched yet. Let us know you're interested and we'll notify you when it goes live.",
+    "interest_cta": "NOTIFY ME / VOTE TO LAUNCH",
+    "interest_ack": "Thanks! We'll let you know when this drop goes live."
   }
 }

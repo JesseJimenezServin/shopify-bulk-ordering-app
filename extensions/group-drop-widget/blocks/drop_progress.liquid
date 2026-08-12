@@ -6,81 +6,96 @@
   on the main product section, then choose "Group Drop Progress"
   under Apps.
 
-  REQUIRED PRODUCT METAFIELDS (namespace: group_drop):
-    - target_goal   (Integer)
-    - drop_price    (Decimal)
-    - deadline      (Date & time, ISO8601)
-    - drop_id       (Single line text)
-    - is_active     (Boolean)
+  Rendered state is driven entirely by one metafield:
 
-  Visibility: renders only when is_active is true AND the current
-  time is within 48 hours (172800s) after the deadline. Soft-deleted
-  drops hide immediately; metafields are purged later by the app's
-  cleanup job.
+    group_drop.status (Single line text)
+      "active"             -> live progress bar, count, countdown, reserve button
+      "dormant"/"upcoming" -> "coming soon" badge + interest button
+      blank / anything else -> renders nothing (0 DOM elements, incl. no CSS/JS)
+
+  The "active" state also reads target_goal, drop_price, and deadline
+  from the same group_drop namespace. is_active is not read here.
   ============================================================
 {% endcomment %}
 
-{{ 'group-drop-widget.css' | asset_url | stylesheet_tag }}
-
 {% assign drop_product = block.settings.product %}
+{% assign drop_status = drop_product.metafields.group_drop.status.value | downcase %}
 
-{% assign show_widget = false %}
+{% assign is_active_drop = false %}
+{% assign is_dormant_drop = false %}
 {% if drop_product %}
-  {% assign is_active = drop_product.metafields.group_drop.is_active.value %}
+  {% if drop_status == 'active' %}
+    {% assign is_active_drop = true %}
+  {% elsif drop_status == 'dormant' or drop_status == 'upcoming' %}
+    {% assign is_dormant_drop = true %}
+  {% endif %}
+{% endif %}
+
+{% if is_active_drop %}
+  {{ 'group-drop-widget.css' | asset_url | stylesheet_tag }}
+
   {% assign pool_goal = drop_product.metafields.group_drop.target_goal.value | default: 20 %}
   {% assign deadline_iso = drop_product.metafields.group_drop.deadline.value %}
   {% assign wholesale_price = drop_product.metafields.group_drop.drop_price.value %}
   {% assign retail_price = drop_product.price %}
 
-  {% if is_active == true and deadline_iso != blank %}
-    {% assign deadline_ts = deadline_iso | date: '%s' | plus: 0 %}
-    {% assign grace_end_ts = deadline_ts | plus: 172800 %}
-    {% assign now_ts = 'now' | date: '%s' | plus: 0 %}
-    {% if now_ts <= grace_end_ts %}
-      {% assign show_widget = true %}
-    {% endif %}
-  {% endif %}
-{% endif %}
+  <div
+    class="nuvus-drop nuvus-drop--active"
+    data-nuvus-state="active"
+    data-product-id="{{ drop_product.id }}"
+    data-variant-id="{{ drop_product.selected_or_first_available_variant.id }}"
+    data-pool-goal="{{ pool_goal }}"
+    data-deadline="{{ deadline_iso }}"
+    data-wholesale-price="{{ wholesale_price | money_without_currency }}"
+  >
+    <div class="nuvus-drop__header">
+      <span class="nuvus-drop__badge">{{ 'group_drop.badge' | t }}</span>
+      <span class="nuvus-drop__timer" data-nuvus-timer>--:--</span>
+    </div>
 
-{% if show_widget %}
-<div
-  class="nuvus-drop"
-  data-product-id="{{ drop_product.id }}"
-  data-variant-id="{{ drop_product.selected_or_first_available_variant.id }}"
-  data-pool-goal="{{ pool_goal }}"
-  data-deadline="{{ deadline_iso }}"
-  data-wholesale-price="{{ wholesale_price | money_without_currency }}"
->
-  <div class="nuvus-drop__header">
-    <span class="nuvus-drop__badge">{{ 'group_drop.badge' | t }}</span>
-    <span class="nuvus-drop__timer" data-nuvus-timer>--:--</span>
+    <div class="nuvus-drop__bar-track">
+      <div class="nuvus-drop__bar-fill" data-nuvus-fill style="width:0%;"></div>
+    </div>
+
+    <div class="nuvus-drop__count-row">
+      <span data-nuvus-count>0</span> / <span data-nuvus-goal>{{ pool_goal }}</span> {{ 'group_drop.joined' | t }}
+      <span class="nuvus-drop__status" data-nuvus-status></span>
+    </div>
+
+    <div class="nuvus-drop__ticker" data-nuvus-ticker aria-live="polite"></div>
+
+    <div class="nuvus-drop__price-row">
+      <span class="nuvus-drop__price-wholesale">{{ wholesale_price | money }}</span>
+      <span class="nuvus-drop__price-retail">{{ retail_price | money }}</span>
+      <span class="nuvus-drop__price-note">{{ 'group_drop.price_note' | t }}</span>
+    </div>
+
+    <button type="button" class="nuvus-drop__reserve-btn" data-nuvus-reserve>
+      {{ 'group_drop.reserve' | t }} ({{ wholesale_price | money }})
+    </button>
+
+    <p class="nuvus-drop__disclaimer">{{ 'group_drop.disclaimer' | t }}</p>
   </div>
 
-  <div class="nuvus-drop__bar-track">
-    <div class="nuvus-drop__bar-fill" data-nuvus-fill style="width:0%;"></div>
+  <script src="{{ 'group-drop-widget.js' | asset_url }}" defer="defer"></script>
+{% elsif is_dormant_drop %}
+  {{ 'group-drop-widget.css' | asset_url | stylesheet_tag }}
+
+  <div class="nuvus-drop nuvus-drop--dormant" data-nuvus-state="dormant">
+    <div class="nuvus-drop__header">
+      <span class="nuvus-drop__badge nuvus-drop__badge--dormant">{{ 'group_drop.dormant_badge' | t }}</span>
+    </div>
+
+    <p class="nuvus-drop__dormant-copy">{{ 'group_drop.dormant_copy' | t }}</p>
+
+    <button type="button" class="nuvus-drop__interest-btn" data-nuvus-interest>
+      {{ 'group_drop.interest_cta' | t }}
+    </button>
+
+    <p class="nuvus-drop__interest-ack" data-nuvus-interest-ack hidden>{{ 'group_drop.interest_ack' | t }}</p>
   </div>
 
-  <div class="nuvus-drop__count-row">
-    <span data-nuvus-count>0</span> / <span data-nuvus-goal>{{ pool_goal }}</span> {{ 'group_drop.joined' | t }}
-    <span class="nuvus-drop__status" data-nuvus-status></span>
-  </div>
-
-  <div class="nuvus-drop__ticker" data-nuvus-ticker aria-live="polite"></div>
-
-  <div class="nuvus-drop__price-row">
-    <span class="nuvus-drop__price-wholesale">{{ wholesale_price | money }}</span>
-    <span class="nuvus-drop__price-retail">{{ retail_price | money }}</span>
-    <span class="nuvus-drop__price-note">{{ 'group_drop.price_note' | t }}</span>
-  </div>
-
-  <button type="button" class="nuvus-drop__reserve-btn" data-nuvus-reserve>
-    {{ 'group_drop.reserve' | t }} ({{ wholesale_price | money }})
-  </button>
-
-  <p class="nuvus-drop__disclaimer">{{ 'group_drop.disclaimer' | t }}</p>
-</div>
-
-<script src="{{ 'group-drop-widget.js' | asset_url }}" defer="defer"></script>
+  <script src="{{ 'group-drop-widget.js' | asset_url }}" defer="defer"></script>
 {% endif %}
 
 {% schema %}
