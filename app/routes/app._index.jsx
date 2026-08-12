@@ -1,12 +1,42 @@
 import { json } from "@vercel/remix";
 import { useLoaderData, useSubmit } from "@remix-run/react";
-import { IndexTable, Page, Badge, Button, Text } from "@shopify/polaris";
+import { IndexTable, Page, Badge, Button, Text, Thumbnail, InlineStack } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { redis, scanDropStatusKeys, softDeleteDrop } from "../lib/redis.server";
 import { deactivateDropMetafields } from "../lib/metafields.server";
 
+const PRODUCT_TITLES_QUERY = `#graphql
+  query DropProductTitles($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Product {
+        id
+        title
+        featuredImage { url }
+      }
+    }
+  }
+`;
+
+async function fetchProductInfoByProductId(admin, productIds) {
+  const uniqueIds = [...new Set(productIds)];
+  const productInfoById = new Map();
+  if (!uniqueIds.length) return productInfoById;
+
+  const gids = uniqueIds.map((id) => `gid://shopify/Product/${id}`);
+  const response = await admin.graphql(PRODUCT_TITLES_QUERY, { variables: { ids: gids } });
+  const { data } = await response.json();
+
+  for (const node of data?.nodes ?? []) {
+    if (!node) continue;
+    const numericId = node.id.split("/").pop();
+    productInfoById.set(numericId, { title: node.title, image: node.featuredImage?.url ?? null });
+  }
+
+  return productInfoById;
+}
+
 export async function loader({ request }) {
-  await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
 
   const statusKeys = await scanDropStatusKeys();
 
@@ -32,7 +62,15 @@ export async function loader({ request }) {
     };
   }));
 
-  return json({ drops });
+  const productInfoById = await fetchProductInfoByProductId(admin, drops.map((d) => d.productId));
+
+  const dropsWithProductInfo = drops.map((d) => ({
+    ...d,
+    productTitle: productInfoById.get(d.productId)?.title ?? null,
+    productImage: productInfoById.get(d.productId)?.image ?? null,
+  }));
+
+  return json({ drops: dropsWithProductInfo });
 }
 
 export async function action({ request }) {
@@ -83,7 +121,14 @@ export default function Dashboard() {
       >
         {drops.map((d, i) => (
           <IndexTable.Row id={d.prefix} key={d.prefix} position={i}>
-            <IndexTable.Cell>{d.productId}</IndexTable.Cell>
+            <IndexTable.Cell>
+              <InlineStack gap="200" blockAlign="center" wrap={false}>
+                {d.productImage && (
+                  <Thumbnail source={d.productImage} alt={d.productTitle || d.productId} size="small" />
+                )}
+                <Text as="span">{d.productTitle || d.productId}</Text>
+              </InlineStack>
+            </IndexTable.Cell>
             <IndexTable.Cell>{d.count} / {d.goal}</IndexTable.Cell>
             <IndexTable.Cell>
               <Badge tone={badgeTone[d.status] || "info"}>
