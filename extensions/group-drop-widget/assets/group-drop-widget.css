@@ -1,0 +1,108 @@
+.nuvus-drop {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+  font-family: inherit;
+  background: #fafafa;
+}
+.nuvus-drop__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.nuvus-drop__badge {
+  background: #ff3b30;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.03em;
+}
+.nuvus-drop__timer {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.nuvus-drop__bar-track {
+  background: #e5e5e5;
+  border-radius: 999px;
+  height: 14px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.nuvus-drop__bar-fill {
+  background: linear-gradient(90deg, #34c759, #30d158);
+  height: 100%;
+  transition: width 0.4s ease;
+}
+.nuvus-drop__count-row {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.nuvus-drop__status {
+  color: #ff3b30;
+  font-weight: 700;
+}
+.nuvus-drop__ticker {
+  font-size: 13px;
+  color: #666;
+  min-height: 18px;
+  margin-bottom: 10px;
+}
+.nuvus-drop__ticker--pulse {
+  animation: nuvusFade 0.5s ease;
+}
+@keyframes nuvusFade {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.nuvus-drop__price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.nuvus-drop__price-wholesale {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1a7f37;
+}
+.nuvus-drop__price-retail {
+  font-size: 15px;
+  color: #999;
+  text-decoration: line-through;
+}
+.nuvus-drop__price-note {
+  font-size: 12px;
+  color: #888;
+  margin-left: auto;
+}
+.nuvus-drop__reserve-btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: #111;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nuvus-drop__reserve-btn:disabled {
+  background: #999;
+  cursor: not-allowed;
+}
+.nuvus-drop__disclaimer {
+  font-size: 11px;
+  color: #999;
+  margin-top: 8px;
+  margin-bottom: 0;
+  text-align: center;
+}

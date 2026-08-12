@@ -1,0 +1,9 @@
+{
+  "group_drop": {
+    "badge": "🔥 GROUP DROP LIVE",
+    "joined": "joined",
+    "price_note": "if goal is missed, you're not charged",
+    "reserve": "RESERVE SPOT",
+    "disclaimer": "Your card is authorized, not charged, when you reserve. You're only charged if the pool hits its goal before the timer runs out."
+  }
+}
