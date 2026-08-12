@@ -19,7 +19,8 @@ This repo is NUVUS Group Drop, a Shopify embedded app for running group-buy "dro
 
 - **Admin UI** (`app/routes/app.*`) — merchant-facing Polaris pages to create and manage drops.
 - **Live pool state** — Upstash Redis (`app/lib/redis.server.js`), keyed by `nuvus:drop:<productId>:<variantId>:*`. Holds count/goal/deadline/status (`open` → `reached`/`missed` → soft-deleted/purged) — this is the source of truth for anything time-sensitive, since it's cheap to read/write on every storefront poll.
-- **Storefront-visible config** — Shopify product metafields under the `group_drop` namespace (`app/lib/metafields.server.js`), read directly by the theme widget (`theme/group-drop-widget.liquid`) via Liquid, independent of the app being reachable.
+- **Storefront-visible config** — Shopify product metafields under the `group_drop` namespace (`app/lib/metafields.server.js`), read directly by the storefront widget via Liquid, independent of the app being reachable.
+- **Storefront widget** — `extensions/group-drop-widget` is a Theme App Extension; its `blocks/drop_progress.liquid` app block is what merchants add under Apps in the Theme Editor. `theme/group-drop-widget.liquid` is the same widget as a manual copy-paste snippet, kept only as a fallback — the two aren't synced automatically, so port changes to both.
 - **Drop resolution, two triggers**:
   - Instant: `app/routes/api.webhooks.order-create.jsx` handles the `orders/create` webhook and flips a drop to `reached` synchronously the moment an order pushes its count to the goal.
   - Scheduled: `app/routes/api.cleanup-drops.jsx` marks drops `missed` once their deadline passes unmet, and purges metafields for closed drops after a 48h grace period. See "Background jobs and drop resolution" below for why this runs on an external cron instead of Vercel's.
