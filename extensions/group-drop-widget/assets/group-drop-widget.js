@@ -7,6 +7,29 @@
   var POLL_INTERVAL_MS = 4000;
 
   widgets.forEach(function (widget) {
+    if (widget.dataset.nuvusState === 'dormant') {
+      initDormantWidget(widget);
+    } else {
+      initActiveWidget(widget);
+    }
+  });
+
+  // Dormant/upcoming drops have no Redis pool to poll — just a lightweight
+  // interest signal, no network call to an endpoint that doesn't exist yet.
+  function initDormantWidget(widget) {
+    var interestBtn = widget.querySelector('[data-nuvus-interest]');
+    var ackEl = widget.querySelector('[data-nuvus-interest-ack]');
+    if (!interestBtn) return;
+
+    interestBtn.addEventListener('click', function () {
+      if (interestBtn.disabled) return;
+      interestBtn.disabled = true;
+      interestBtn.textContent = 'Thanks!';
+      if (ackEl) ackEl.hidden = false;
+    });
+  }
+
+  function initActiveWidget(widget) {
     var productId = widget.dataset.productId;
     var variantId = widget.dataset.variantId;
     var goal = parseInt(widget.dataset.poolGoal, 10) || 20;
@@ -19,6 +42,7 @@
     var statusEl = widget.querySelector('[data-nuvus-status]');
     var tickerEl = widget.querySelector('[data-nuvus-ticker]');
     var reserveBtn = widget.querySelector('[data-nuvus-reserve]');
+    if (!reserveBtn) return;
 
     var poolLocked = false;
 
@@ -104,5 +128,5 @@
     setInterval(pollStatus, POLL_INTERVAL_MS);
     setInterval(tickCountdown, 1000);
     tickCountdown();
-  });
+  }
 })();
