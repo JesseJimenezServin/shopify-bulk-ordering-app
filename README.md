@@ -13,6 +13,19 @@ Rather than cloning this repo, you can use your preferred package manager and th
 
 Visit the [`shopify.dev` documentation](https://shopify.dev/docs/api/shopify-app-remix) for more details on the Remix app package.
 
+## Architecture
+
+This repo is NUVUS Group Drop, a Shopify embedded app for running group-buy "drops" on products (shoppers reserve a spot; if a goal is hit before a deadline, the pool is captured, otherwise no one is charged). It's built on this Remix template with the following app-specific pieces layered on top:
+
+- **Admin UI** (`app/routes/app.*`) — merchant-facing Polaris pages to create and manage drops.
+- **Live pool state** — Upstash Redis (`app/lib/redis.server.js`), keyed by `nuvus:drop:<productId>:<variantId>:*`. Holds count/goal/deadline/status (`open` → `reached`/`missed` → soft-deleted/purged) — this is the source of truth for anything time-sensitive, since it's cheap to read/write on every storefront poll.
+- **Storefront-visible config** — Shopify product metafields under the `group_drop` namespace (`app/lib/metafields.server.js`), read directly by the theme widget (`theme/group-drop-widget.liquid`) via Liquid, independent of the app being reachable.
+- **Drop resolution, two triggers**:
+  - Instant: `app/routes/api.webhooks.order-create.jsx` handles the `orders/create` webhook and flips a drop to `reached` synchronously the moment an order pushes its count to the goal.
+  - Scheduled: `app/routes/api.cleanup-drops.jsx` marks drops `missed` once their deadline passes unmet, and purges metafields for closed drops after a 48h grace period. See "Background jobs and drop resolution" below for why this runs on an external cron instead of Vercel's.
+- **Session storage** — Prisma + PostgreSQL (Neon), not the template's default SQLite; see `prisma/schema.prisma`.
+- **Auth** — embedded app using `shopify-app-remix`'s token-exchange strategy (`unstable_newEmbeddedAuthStrategy` in `app/shopify.server.ts`), hosted on Vercel via the `@vercel/remix` preset (see "Hosting on Vercel").
+
 ## Quick start
 
 ### Prerequisites
@@ -83,10 +96,8 @@ Please read the [documentation for @shopify/shopify-app-remix](https://www.npmjs
 
 ### Application Storage
 
-This template uses [Prisma](https://www.prisma.io/) to store session data, by default using an [SQLite](https://www.sqlite.org/index.html) database.
-The database is defined as a Prisma schema in `prisma/schema.prisma`.
+This template uses [Prisma](https://www.prisma.io/) to store session data. The template itself defaults to [SQLite](https://www.sqlite.org/index.html), but **this app is configured for PostgreSQL** (hosted on [Neon](https://neon.tech)) — see the `datasource db` block in `prisma/schema.prisma`, and the `DATABASE_URL` env var.
 
-This use of SQLite works in production if your app runs as a single instance.
 The database that works best for you depends on the data your app needs and how it is queried.
 You can run your database of choice on a server yourself or host it with a SaaS company.
 Here's a short list of databases providers that provide a free tier to get started:
@@ -127,6 +138,12 @@ pnpm run build
 When you're ready to set up your app in production, you can follow [our deployment documentation](https://shopify.dev/docs/apps/deployment/web) to host your app on a cloud provider like [Heroku](https://www.heroku.com/) or [Fly.io](https://fly.io/).
 
 When you reach the step for [setting up environment variables](https://shopify.dev/docs/apps/deployment/web#set-env-vars), you also need to set the variable `NODE_ENV=production`.
+
+### App configuration (`shopify.app.*.toml`)
+
+The Shopify CLI can track multiple `shopify.app.<name>.toml` files in one repo, but only one is "linked" at a time — tracked by `.shopify/project.json` (keyed by `client_id`), and it's the only one `shopify app deploy` / `shopify app env show` actually reads or pushes to the Partner Dashboard. **If more than one `shopify.app.*.toml` exists, don't assume the one with the most complete-looking config is the live one** — check `.shopify/project.json`'s `client_id` against the `client_id` at the top of each toml file. This app currently links to `shopify.app.nuvus-group-drop.toml`.
+
+`application_url`, `redirect_urls`, `access_scopes`, and `[[webhooks.subscriptions]]` in that file only take effect once you run `npx shopify app deploy` (or `npx shopify app config push` on CLI versions that have it) — editing the toml alone does not change anything on Shopify's side until deployed.
 
 ### Hosting on Vercel
 
@@ -192,7 +209,7 @@ This only applies if your app is embedded, which it will be by default.
 
 Shopify apps are best when they are embedded in the Shopify Admin, which is how this template is configured. If you have a reason to not embed your app please make the following changes:
 
-1. Ensure `embedded = false` is set in [shopify.app.toml`](./shopify.app.toml). [Docs here](https://shopify.dev/docs/apps/build/cli-for-apps/app-configuration#global).
+1. Ensure `embedded = false` is set in your linked `shopify.app.*.toml` (see "App configuration" above for which file that is). [Docs here](https://shopify.dev/docs/apps/build/cli-for-apps/app-configuration#global).
 2. Pass `isEmbeddedApp: false` to `shopifyApp()` in `./app/shopify.server.js|ts`.
 3. Change the `isEmbeddedApp` prop to `isEmbeddedApp={false}` for the `AppProvider` in `/app/routes/app.jsx|tsx`.
 4. Remove the `@shopify/app-bridge-react` dependency from [package.json](./package.json) and `vite.config.ts|js`.
@@ -221,11 +238,13 @@ Using pnpm:
 pnpm run deploy
 ```
 
+A related but different symptom is a **401 right after a merchant accepts new scopes**, instead of a redirect loop. `authenticate.admin`'s token-exchange strategy (`unstable_newEmbeddedAuthStrategy`) already re-authenticates automatically when a stored session's `scope` doesn't match the app's configured scopes — that check lives in `@shopify/shopify-api`'s `Session.isScopeChanged()` and isn't something app code needs to reimplement. It only works if the stored `scope` is actually kept in sync, which is what `app/routes/webhooks.app.scopes_update.tsx` does (via `db.session.updateMany({ where: { shop } })` — every session row for the shop, not just one). If you ever see this 401 recur, first check whether the `app/scopes_update` webhook is actually registered and firing (see "App configuration" above) before suspecting the token-exchange logic itself.
+
 ### My shop-specific webhook subscriptions aren't updated
 
 If you are registering webhooks in the `afterAuth` hook, using `shopify.registerWebhooks`, you may find that your subscriptions aren't being updated.  
 
-Instead of using the `afterAuth` hook, the recommended approach is to declare app-specific webhooks in the `shopify.app.toml` file.  This approach is easier since Shopify will automatically update changes to webhook subscriptions every time you run `deploy` (e.g: `npm run deploy`).  Please read these guides to understand more:
+Instead of using the `afterAuth` hook, the recommended approach is to declare app-specific webhooks in your linked `shopify.app.*.toml` file (see "App configuration" above).  This approach is easier since Shopify will automatically update changes to webhook subscriptions every time you run `deploy` (e.g: `npm run deploy`).  Please read these guides to understand more:
 
 1. [app-specific vs shop-specific webhooks](https://shopify.dev/docs/apps/build/webhooks/subscribe#app-specific-subscriptions)
 2. [Create a subscription tutorial](https://shopify.dev/docs/apps/build/webhooks/subscribe/get-started?framework=remix&deliveryMethod=https)
@@ -258,6 +277,12 @@ in this situation, please update the [.graphqlrc.ts](https://github.com/Shopify/
 ### First parameter has member 'readable' that is not a ReadableStream.
 
 See [hosting on Vercel](#hosting-on-vercel).
+
+### 410 Gone at the root URL
+
+`authenticate.admin` internally rejects any request whose `User-Agent` is classified as a bot by the `isbot` library, throwing a raw `410 Gone` (see `reject-bot-request.js` in `@shopify/shopify-app-remix`). This is meant to stop crawlers from triggering OAuth, but it also fires for non-browser traffic like `curl`, uptime monitors, or Vercel's own deployment-preview screenshotter — and plausibly for Shopify's own embeddability pre-checks, which can present as a blank embedded iframe.
+
+For this reason, `app/routes/_index.jsx` (the bare `/` route) deliberately does **not** call `authenticate.admin` — it only forwards the query string into `/app`, which authenticates on its own loader. Don't "fix" this by adding authentication back to the root route; that's what caused the regression in the first place. Any *other* route that needs to authenticate real merchant traffic should keep calling `authenticate.admin` as normal — real browsers are never bot-classified, so this only matters for routes hit by automated tooling.
 
 ### Admin object undefined on webhook events triggered by the CLI
 
