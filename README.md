@@ -140,6 +140,12 @@ Concretely, this means:
 
 If you fork this app onto a different host (Heroku, Fly.io, Docker), swap those `@vercel/remix` imports back to `@remix-run/node` and remove the preset — `@vercel/remix` is Vercel-specific.
 
+### Environment variables
+
+See `.env.example` for the full list. For Shopify credentials specifically, the app reads exactly one pair of variable names — `SHOPIFY_API_KEY` and `SHOPIFY_API_SECRET` (set in `app/shopify.server.ts`) — matching the standard Shopify Remix template convention and what `npx shopify app env show` outputs for this app. There is no `SHOPIFY_CLIENT_ID` / `SHOPIFY_CLIENT_SECRET` naming anywhere in the codebase; don't add a second pair under those names in Vercel's project settings, since the app will silently ignore them and keep using whatever `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` are already set to.
+
+This matters in practice: if the app's registered client ID/secret on Shopify's Partner Dashboard ever changes (e.g. after deleting and recreating an app, or switching which `shopify.app.*.toml` config is linked), `SHOPIFY_API_KEY` and `SHOPIFY_API_SECRET` must be updated everywhere they're set — locally in `.env`, and in Vercel's project environment variables — or requests will fail auth (typically surfacing as a 401) even though the code and Shopify-side config are otherwise correct. Run `npx shopify app env show` to get the values for the currently-linked app.
+
 ### Background jobs and drop resolution
 
 Group drops resolve in two different ways, on two different triggers:
