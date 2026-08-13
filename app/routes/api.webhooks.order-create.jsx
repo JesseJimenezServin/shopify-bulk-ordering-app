@@ -1,6 +1,7 @@
 import { authenticate } from "../shopify.server";
 import { redis, keyPrefix, trackDropOrder } from "../lib/redis.server";
 import { setDropStatusMetafield } from "../lib/metafields.server";
+import { captureOrdersForDropWithAdmin } from "../lib/orders.server";
 
 export async function action({ request }) {
   const { shop, topic, admin, payload } = await authenticate.webhook(request);
@@ -49,6 +50,15 @@ export async function action({ request }) {
 
       if (admin) {
         await setDropStatusMetafield(admin, `gid://shopify/Product/${productId}`, "reached");
+
+        const captureResults = await captureOrdersForDropWithAdmin(admin, prefix);
+        const failedCaptures = captureResults.filter((result) => !result.captured);
+        if (failedCaptures.length) {
+          console.error(
+            `NUVUS: ${failedCaptures.length}/${captureResults.length} order captures failed for drop ${prefix}`,
+            failedCaptures,
+          );
+        }
       }
     }
   }

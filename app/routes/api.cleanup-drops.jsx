@@ -2,7 +2,7 @@ import { json } from "@vercel/remix";
 import { unauthenticated } from "../shopify.server";
 import { getStaleCleanupEntries, removeCleanupEntry, resolveExpiredDrops } from "../lib/redis.server";
 import { deleteDropMetafields, setDropStatusMetafield } from "../lib/metafields.server";
-import { cancelOrderAuthorization } from "../lib/orders.server";
+import { cancelOrderAuthorization, captureOrdersForDropWithAdmin } from "../lib/orders.server";
 
 function authorizeCleanup(request) {
   // Vercel Cron automatically sends `Authorization: Bearer $CRON_SECRET` when an
@@ -27,7 +27,10 @@ function authorizeCleanup(request) {
 // against a drop sits authorized-but-uncaptured until the drop resolves.
 // When a drop resolves "missed", every associated order's authorization is
 // released via orderCancel (refund: false — there's nothing to capture yet,
-// so there's nothing to refund).
+// so there's nothing to refund). When the count>=goal self-heal instead
+// resolves a drop to "reached" (the order webhook's metafield/capture step
+// never ran because its Redis increment succeeded but something after it
+// failed), this captures payment the same way the webhook normally would.
 async function resolveDropOutcomes() {
   const resolved = await resolveExpiredDrops();
   const results = [];
@@ -78,6 +81,11 @@ async function resolveDropOutcomes() {
       }));
     }
 
+    let capturedOrders = [];
+    if (status === "reached" && orderIds.length) {
+      capturedOrders = await captureOrdersForDropWithAdmin(admin, prefix);
+    }
+
     results.push({
       prefix,
       productGid,
@@ -86,6 +94,7 @@ async function resolveDropOutcomes() {
       metafieldUpdated,
       ...(metafieldError ? { metafieldError } : {}),
       ...(status === "missed" ? { canceledOrders } : {}),
+      ...(status === "reached" ? { capturedOrders } : {}),
     });
   }
 
