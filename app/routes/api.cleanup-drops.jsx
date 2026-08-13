@@ -17,28 +17,35 @@ function authorizeCleanup(request) {
   }
 }
 
-// Drops whose deadline has passed without hitting their goal never get an
-// order webhook to flip them, so this scan is what actually resolves them
-// to "missed" and starts their 48h grace period.
-async function resolveMissed() {
-  const expired = await resolveExpiredDrops();
+// Drops that are no longer live (deadline passed, or manually ended) never
+// get an order webhook to flip them, so this scan is what actually resolves
+// them — to "missed", or self-heals to "reached" if the pool actually hit
+// its goal — and starts the 48h grace period for the ones that missed.
+//
+// NOTE: for drops resolved as "missed", orderIds lists every order placed
+// against that drop while it was open. Nothing here yet cancels/releases
+// their payment authorizations — see README for why that's intentionally
+// not automated yet. They're surfaced in the response for manual review.
+async function resolveDropOutcomes() {
+  const resolved = await resolveExpiredDrops();
   const results = [];
 
-  for (const { prefix, shop, productGid } of expired) {
+  for (const { prefix, shop, productGid, status, orderIds } of resolved) {
     if (!shop) {
-      results.push({ prefix, productGid, status: "missed", metafieldUpdated: false });
+      results.push({ prefix, productGid, status, orderIds, metafieldUpdated: false });
       continue;
     }
 
     try {
       const { admin } = await unauthenticated.admin(shop);
-      await setDropStatusMetafield(admin, productGid, "missed");
-      results.push({ prefix, productGid, status: "missed", metafieldUpdated: true });
+      await setDropStatusMetafield(admin, productGid, status);
+      results.push({ prefix, productGid, status, orderIds, metafieldUpdated: true });
     } catch (error) {
       results.push({
         prefix,
         productGid,
-        status: "missed",
+        status,
+        orderIds,
         metafieldUpdated: false,
         message: error instanceof Error ? error.message : String(error),
       });
@@ -75,12 +82,12 @@ async function purgeStale() {
 }
 
 async function runCleanup() {
-  const missed = await resolveMissed();
+  const resolved = await resolveDropOutcomes();
   const purged = await purgeStale();
 
   return {
-    missedResolved: missed.length,
-    missed,
+    resolved: resolved.length,
+    resolvedDrops: resolved,
     processed: purged.length,
     results: purged,
   };
