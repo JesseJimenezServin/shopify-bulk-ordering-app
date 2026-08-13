@@ -1,5 +1,5 @@
 import { authenticate } from "../shopify.server";
-import { redis, keyPrefix } from "../lib/redis.server";
+import { redis, keyPrefix, trackDropOrder } from "../lib/redis.server";
 import { setDropStatusMetafield } from "../lib/metafields.server";
 
 export async function action({ request }) {
@@ -35,6 +35,11 @@ export async function action({ request }) {
     ]);
     if (status !== "open") continue;
     if (deadline && Date.now() > new Date(deadline).getTime()) continue;
+
+    // Recorded regardless of whether this order pushes the drop to "reached" —
+    // if the drop is later resolved as "missed", every order placed against it
+    // needs its payment authorization reviewed, not just the last one.
+    await trackDropOrder(prefix, payload?.id);
 
     const goal = Number(await redis.get(`${prefix}:goal`));
     const newCount = await redis.incrby(`${prefix}:count`, quantity);

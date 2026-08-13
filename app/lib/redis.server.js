@@ -33,35 +33,69 @@ export async function scanDropStatusKeys() {
   return statusKeys;
 }
 
-// Scans all open drops and flips any whose deadline has passed without hitting
-// their goal to "missed", queuing them for the same 48h grace + purge flow as
-// a manual end/delete.
+// Resolves every drop that's still marked "open" but is no longer actually
+// live — either its deadline has passed, or a merchant manually ended it
+// (the dashboard's "End" action soft-deletes it but leaves :status as "open").
+// Self-heals a count/goal mismatch: if the pool actually hit its goal (e.g. an
+// order webhook's Redis increment succeeded but its metafield write failed),
+// this resolves to "reached" instead of incorrectly reporting a missed drop.
 export async function resolveExpiredDrops() {
   const statusKeys = await scanDropStatusKeys();
   const resolved = [];
 
   for (const statusKey of statusKeys) {
     const prefix = statusKey.replace(/:status$/, "");
-    const [status, deadline, config] = await Promise.all([
+    const [status, deadline, count, goal, config] = await Promise.all([
       redis.get(`${prefix}:status`),
       redis.get(`${prefix}:deadline`),
+      redis.get(`${prefix}:count`),
+      redis.get(`${prefix}:goal`),
       redis.hgetall(`${prefix}:config`),
     ]);
 
-    if (status !== "open" || !deadline) continue;
-    if (Date.now() < new Date(deadline).getTime()) continue;
+    if (status !== "open") continue;
 
-    const [, , productId] = prefix.split(":");
+    const deadlinePassed = Boolean(deadline) && Date.now() >= new Date(deadline).getTime();
+    const manuallyEnded = Boolean(config?.softDeletedAt);
+    if (!deadlinePassed && !manuallyEnded) continue;
+
+    const [, , productId, variantId] = prefix.split(":");
     const productGid = `gid://shopify/Product/${productId}`;
     const shop = config?.shop;
+    const goalNum = Number(goal);
+    const countNum = Number(count) || 0;
+    const resolvedStatus = goalNum && countNum >= goalNum ? "reached" : "missed";
 
-    await redis.set(`${prefix}:status`, "missed");
-    await softDeleteDrop(prefix, { shop, productGid });
+    await redis.set(`${prefix}:status`, resolvedStatus);
+    if (!manuallyEnded) {
+      await softDeleteDrop(prefix, { shop, productGid });
+    }
 
-    resolved.push({ prefix, shop, productGid });
+    const orderIds = await getDropOrderIds(prefix);
+
+    resolved.push({
+      prefix,
+      productId,
+      variantId,
+      shop,
+      productGid,
+      status: resolvedStatus,
+      count: countNum,
+      goal: goalNum,
+      orderIds,
+    });
   }
 
   return resolved;
+}
+
+export async function trackDropOrder(prefix, orderId) {
+  if (!orderId) return;
+  await redis.sadd(`${prefix}:order_ids`, orderId);
+}
+
+export async function getDropOrderIds(prefix) {
+  return redis.smembers(`${prefix}:order_ids`);
 }
 
 export async function softDeleteDrop(prefix, { shop, productGid }) {
