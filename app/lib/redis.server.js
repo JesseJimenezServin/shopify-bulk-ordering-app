@@ -94,8 +94,46 @@ export async function trackDropOrder(prefix, orderId) {
   await redis.sadd(`${prefix}:order_ids`, orderId);
 }
 
+export async function untrackDropOrder(prefix, orderId) {
+  if (!orderId) return;
+  await redis.srem(`${prefix}:order_ids`, orderId);
+}
+
 export async function getDropOrderIds(prefix) {
   return redis.smembers(`${prefix}:order_ids`);
+}
+
+// Drops already resolved (missed/reached) can still have orders whose
+// cancel/capture attempt failed on a previous run — cancelOrdersForDropWithAdmin
+// and captureOrdersForDropWithAdmin untrack each order as soon as it succeeds,
+// so whatever's left in order_ids is exactly what still needs retrying. This
+// finds those drops without re-running status/metafield resolution, which
+// already succeeded.
+export async function findDropsWithPendingOrderActions() {
+  const statusKeys = await scanDropStatusKeys();
+  const pending = [];
+
+  for (const statusKey of statusKeys) {
+    const prefix = statusKey.replace(/:status$/, "");
+    const status = await redis.get(`${prefix}:status`);
+    if (status !== "missed" && status !== "reached") continue;
+
+    const orderIds = await getDropOrderIds(prefix);
+    if (!orderIds.length) continue;
+
+    const config = await redis.hgetall(`${prefix}:config`);
+    const [, , productId] = prefix.split(":");
+
+    pending.push({
+      prefix,
+      status,
+      shop: config?.shop,
+      productGid: `gid://shopify/Product/${productId}`,
+      orderIds,
+    });
+  }
+
+  return pending;
 }
 
 export async function softDeleteDrop(prefix, { shop, productGid }) {

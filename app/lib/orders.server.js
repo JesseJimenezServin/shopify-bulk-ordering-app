@@ -1,5 +1,5 @@
 import { unauthenticated } from "../shopify.server";
-import { getDropOrderIds } from "./redis.server";
+import { getDropOrderIds, untrackDropOrder } from "./redis.server";
 
 const ORDER_CANCEL_MUTATION = `#graphql
   mutation CancelMissedDropOrder(
@@ -48,6 +48,28 @@ export async function cancelOrderAuthorization(admin, orderId) {
   }
 
   return data?.orderCancel?.job ?? null;
+}
+
+// Cancels every order still tracked against a drop, given an already-resolved
+// admin client. Each order is attempted independently so one failure doesn't
+// block the rest. Successfully-canceled orders are untracked immediately, so
+// whatever's left in Redis after this is exactly what still needs a retry on
+// a later cleanup run.
+export async function cancelOrdersForDropWithAdmin(admin, prefix) {
+  const orderIds = await getDropOrderIds(prefix);
+  if (!orderIds.length) return [];
+
+  return Promise.all(orderIds.map(async (orderId) => {
+    try {
+      await cancelOrderAuthorization(admin, orderId);
+      await untrackDropOrder(prefix, orderId);
+      return { orderId, canceled: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`NUVUS: failed to cancel order ${orderId} for drop ${prefix}: ${message}`);
+      return { orderId, canceled: false, message };
+    }
+  }));
 }
 
 const ORDER_PENDING_AUTHORIZATION_QUERY = `#graphql
@@ -120,7 +142,8 @@ export async function captureOrderPayment(admin, orderId) {
 // Captures every order tracked against a drop, given an already-resolved
 // admin client. Each order is attempted independently so one failure (e.g.
 // an order that was already captured, refunded, or canceled) doesn't block
-// the rest — failures are logged and returned, never thrown.
+// the rest — failures are logged and returned, never thrown. Successfully
+// captured orders are untracked immediately, same reasoning as cancellation.
 export async function captureOrdersForDropWithAdmin(admin, prefix) {
   const orderIds = await getDropOrderIds(prefix);
   if (!orderIds.length) return [];
@@ -128,6 +151,7 @@ export async function captureOrdersForDropWithAdmin(admin, prefix) {
   return Promise.all(orderIds.map(async (orderId) => {
     try {
       await captureOrderPayment(admin, orderId);
+      await untrackDropOrder(prefix, orderId);
       return { orderId, captured: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
