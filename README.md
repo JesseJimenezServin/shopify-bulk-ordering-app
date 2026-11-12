@@ -13,8 +13,11 @@ routes, and storefront widget.
 
 **Status: concluded.** The core engine (Phase 1 of [`VISION.md`](VISION.md))
 was built and deployed to Vercel with a live Shopify app registration.
-Development stopped before the later phases: creator commissions,
-invite-only drops, and a multi-vendor marketplace.
+**No real shoppers ever used it.** I
+stopped when market research showed that this market already existed:
+group-buying tools for Shopify were already available. The later phases
+(creator commissions, invite-only drops, a multi-vendor marketplace) were
+never built.
 
 ---
 
@@ -57,7 +60,15 @@ Deeper detail, including every Shopify and Vercel gotcha below, is in
 
 ## What I learned
 
-**1. On a platform, configuration is code, and it was most of the work.**
+**1. Research the market before writing code.** This is the lesson that
+outweighs all the others. I built and deployed a working app in 12 days,
+and only afterwards did market research show that the market already
+existed. Two weeks of engineering answered "can I build this?" when the
+question that mattered was "does anyone need another one?" An afternoon
+looking at what was already out there, and talking to a few merchants,
+would have answered that first, for free.
+
+**2. On a platform, configuration is code, and it was most of the work.**
 The first three days were almost all plumbing, not product. A typical
 symptom took several separate causes to fix:
 - The embedded app showed a blank iframe and 404s. Vercel needed a Remix
@@ -75,7 +86,7 @@ symptom took several separate causes to fix:
 The lesson: check what is *actually deployed and linked*, not what the
 files in the repo look like.
 
-**2. Anything that moves money must be retryable, one item at a time.** A
+**3. Anything that moves money must be retryable, one item at a time.** A
 drop resolves once. But if capturing or cancelling one of its orders
 failed during that single pass, nothing ever retried it. The drop looked
 done while an order sat authorized forever. The fix had three parts:
@@ -84,33 +95,33 @@ done while an order sat authorized forever. The fix had three parts:
 - Isolate every order, so one failure can't block the rest.
 - Isolate each cleanup phase, so one exception can't skip the others.
 
-**3. Two sources of truth will drift, so design for self-healing.** Redis
+**4. Two sources of truth will drift, so design for self-healing.** Redis
 holds the count, and Shopify metafields drive the storefront. When a
 Redis increment succeeded but the metafield write after it failed, a drop
 that had reached its goal would have been marked *missed*. The cleanup job
 now re-checks `count ≥ goal` before resolving anything.
 
-**4. When you change what a reader depends on, find every writer.** I
+**5. When you change what a reader depends on, find every writer.** I
 switched the widget to render from a new `status` field, but drop creation
 only ever wrote the old `is_active` flag. Every open drop would have
 silently disappeared from the storefront.
 
-**5. Units bugs hide in plain sight.** The 48-hour grace period compared a
+**6. Units bugs hide in plain sight.** The 48-hour grace period compared a
 millisecond timestamp against a value in seconds, so drops were purged
 after about **3 minutes**. It's a one-line fix that no type checker
 catches.
 
-**6. Free tiers shape architecture.** Vercel's free plan runs cron jobs
+**7. Free tiers shape architecture.** Vercel's free plan runs cron jobs
 only once a day, which is far too coarse to close a drop near its
 deadline. Scheduling moved to an external every-minute cron with its own
 secret.
 
-**7. Prove the core loop before planning the platform.** `VISION.md` grew
+**8. Prove the core loop before planning the platform.** `VISION.md` grew
 into a social group-buying marketplace with creator commissions and
 Stripe Connect payouts. Meanwhile, one important step was never confirmed
 against a real completed drop: whether Shopify lets an app-level token
-capture payments. The next step should have been to run one drop end to
-end with real money, not to plan Phase 4.
+capture payments. The same pattern as lesson 1: the next step should have
+been to run one drop end to end with real money, not to plan Phase 4.
 
 ---
 
