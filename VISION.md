@@ -1,5 +1,8 @@
 # Nuvus Group Drop — Architectural & Product Roadmap
 
+> **Status (2026-11-11): concluded.** Phase 1 was built and deployed; development stopped
+> there. This roadmap is kept as written. See the README for the retrospective.
+
 ## Core Vision
 Nuvus is evolving from a single-merchant Shopify drop tool into a **Social Group Buying Platform**. The platform enables buyers, creators, and friend groups to coordinate group purchases (unlocking wholesale prices or limited-edition runs) with zero counterparty risk. The platform handles authorization holds, threshold aggregation, payment captures, platform take-rates, and split-destination fulfillment.
 
